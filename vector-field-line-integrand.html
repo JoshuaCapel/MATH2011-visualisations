@@ -29,7 +29,11 @@
     .endpoint { fill: #d64545; stroke: #fff; stroke-width: 2; }
     .axis { stroke: #26334d; stroke-width: 1.2; }
     .grid { stroke: #e7ebf3; stroke-width: 1; }
+    .zero-line { stroke: #536078; stroke-width: 1.5; }
+    .positive-area { fill: #4caf82; opacity: .18; }
+    .negative-area { fill: #d64545; opacity: .16; }
     .plot-line { fill: none; stroke: #3867d6; stroke-width: 3; }
+    .curve-direction { fill: none; stroke: none; marker-end: url(#curve-arrow); }
     .value { font-weight: 650; color: #26334d; }
     @media (max-width: 850px) { .layout { grid-template-columns: 1fr; } body { padding: 12px; } }
   </style>
@@ -75,9 +79,12 @@
     const el = (name, attrs={}) => { const x = document.createElementNS(NS,name); for (const [k,v] of Object.entries(attrs)) x.setAttribute(k,v); return x; };
     const group = el('g'); plane.append(group);
     const defs = el('defs'), marker = el('marker',{id:'arrow',markerWidth:6,markerHeight:6,refX:5,refY:3,orient:'auto'});
-    marker.append(el('path',{d:'M0,0 L6,3 L0,6 z',fill:'#9aa8c2'})); defs.append(marker); plane.append(defs);
-    const curvePath = el('path',{class:'curve'}), handles = el('g'), controls = el('g'), endpoints = el('g');
-    plane.append(handles, curvePath, controls, endpoints);
+    marker.append(el('path',{d:'M0,0 L6,3 L0,6 z',fill:'#9aa8c2'}));
+    const curveMarker = el('marker',{id:'curve-arrow',markerWidth:18,markerHeight:18,refX:15,refY:9,orient:'auto',markerUnits:'userSpaceOnUse'});
+    curveMarker.append(el('path',{d:'M0,0 L18,9 L0,18 z',fill:'#d64545'}));
+    defs.append(marker,curveMarker); plane.append(defs);
+    const curvePath = el('path',{class:'curve'}), directionArrow = el('path',{class:'curve-direction'}), handles = el('g'), controls = el('g'), endpoints = el('g');
+    plane.append(handles, curvePath, controls, endpoints, directionArrow);
     function F(x,y) { switch(fieldSelect.value) { case 'constant': return [1,.5]; case 'radial': return [x/4,y/4]; case 'shear': return [y/4,x/4]; default: return [-y/4,x/4]; } }
     function drawField() {
       group.replaceChildren();
@@ -108,8 +115,41 @@
       }
     }
     function compute() { const out=[]; let sum=0, n=500; for(let i=0;i<=n;i++){const t=i/n,r=bez(t),d=bezDeriv(t),[fx,fy]=F(...screenToField(r)); const integrand=fx*d.x/55 + fy*(-d.y/55); if(i>0) sum += integrand/n; out.push({t,v:integrand, cumulative:sum});} return out; }
-    function drawCurve() { curvePath.setAttribute('d',`M ${points[0].x} ${points[0].y} C ${points[1].x} ${points[1].y}, ${points[2].x} ${points[2].y}, ${points[3].x} ${points[3].y}`); handles.replaceChildren(); controls.replaceChildren(); endpoints.replaceChildren(); handles.append(el('line',{class:'handle-line',x1:points[0].x,y1:points[0].y,x2:points[1].x,y2:points[1].y}),el('line',{class:'handle-line',x1:points[3].x,y1:points[3].y,x2:points[2].x,y2:points[2].y})); points.forEach((p,i)=>{const c=el('circle',{class:i===0||i===3?'endpoint':'control',cx:p.x,cy:p.y,r:i===0||i===3?7:9}); const selection=d3.select(c); selection.call(d3.drag().on('start',()=>{dragIndex=i;}).on('drag',(event)=>{const r=plane.getBoundingClientRect(); points[i]={x:event.sourceEvent.clientX-r.left,y:event.sourceEvent.clientY-r.top}; points[i].x*=W/r.width; points[i].y*=H/r.height; update();}).on('end',()=>{dragIndex=-1;})); (i===0||i===3?endpoints:controls).append(c);}); }
-    function drawPlot(data) { const x0=55,x1=735,y0=25,y1=315, vals=data.map(d=>d.v); let lo=Math.min(0,...vals), hi=Math.max(0,...vals), pad=(hi-lo||1)*.12; lo-=pad;hi+=pad; plot.replaceChildren(); for(let i=0;i<=5;i++){const y=y1-i*(y1-y0)/5, val=lo+i*(hi-lo)/5; const gridLine=el('line',{class:'grid',x1:x0,y1:y,x2:x1,y2:y}); const label=el('text',{x:5,y:y+4,'font-size':12,fill:'#536078'}); label.textContent=val.toFixed(2); plot.append(gridLine,label);} plot.append(el('line',{class:'axis',x1:x0,y1:y1,x2:x1,y2:y1}),el('line',{class:'axis',x1:x0,y1:y0,x2:x0,y2:y1})); const d=data.map((p,i)=>`${i?'L':'M'} ${x0+p.t*(x1-x0)} ${y1-(p.v-lo)/(hi-lo)*(y1-y0)}`).join(' ');plot.append(el('path',{class:'plot-line',d})); }
+    function drawCurve() { const curveD=`M ${points[0].x} ${points[0].y} C ${points[1].x} ${points[1].y}, ${points[2].x} ${points[2].y}, ${points[3].x} ${points[3].y}`; curvePath.setAttribute('d',curveD); const before=bez(.49), midpoint=bez(.5); directionArrow.setAttribute('d',`M ${before.x} ${before.y} L ${midpoint.x} ${midpoint.y}`); handles.replaceChildren(); controls.replaceChildren(); endpoints.replaceChildren(); handles.append(el('line',{class:'handle-line',x1:points[0].x,y1:points[0].y,x2:points[1].x,y2:points[1].y}),el('line',{class:'handle-line',x1:points[3].x,y1:points[3].y,x2:points[2].x,y2:points[2].y})); points.forEach((p,i)=>{const c=el('circle',{class:i===0||i===3?'endpoint':'control',cx:p.x,cy:p.y,r:i===0||i===3?7:9}); const selection=d3.select(c); selection.call(d3.drag().on('start',()=>{dragIndex=i;}).on('drag',(event)=>{const r=plane.getBoundingClientRect(); points[i]={x:event.sourceEvent.clientX-r.left,y:event.sourceEvent.clientY-r.top}; points[i].x*=W/r.width; points[i].y*=H/r.height; update();}).on('end',()=>{dragIndex=-1;})); (i===0||i===3?endpoints:controls).append(c);}); }
+    function drawPlot(data) {
+      const x0=55,x1=735,y0=25,y1=315, vals=data.map(d=>d.v);
+      let lo=Math.min(0,...vals), hi=Math.max(0,...vals), pad=(hi-lo||1)*.12;
+      lo-=pad; hi+=pad;
+      const x = t => x0+t*(x1-x0), y = v => y1-(v-lo)/(hi-lo)*(y1-y0), zeroY=y(0);
+      plot.replaceChildren();
+
+      for(let i=0;i<=5;i++) {
+        const value=lo+i*(hi-lo)/5;
+        if(Math.abs(value)<(hi-lo)*1e-9) continue;
+        const yy=y(value);
+        plot.append(el('line',{class:'grid',x1:x0,y1:yy,x2:x1,y2:yy}));
+        const label=el('text',{x:5,y:yy+4,'font-size':12,fill:'#536078'});
+        label.textContent=value.toFixed(2); plot.append(label);
+      }
+
+      const curve=data.map((p,i)=>`${i?'L':'M'} ${x(p.t)} ${y(p.v)}`).join(' ');
+      const area=`${curve} L ${x1} ${zeroY} L ${x0} ${zeroY} Z`;
+      plot.append(el('path',{class:'positive-area',d:area}));
+      plot.append(el('path',{class:'negative-area',d:area}));
+      const positiveClip=el('clipPath',{id:'positive-plot-area'});
+      positiveClip.append(el('rect',{x:x0,y:y0,width:x1-x0,height:zeroY-y0}));
+      const negativeClip=el('clipPath',{id:'negative-plot-area'});
+      negativeClip.append(el('rect',{x:x0,y:zeroY,width:x1-x0,height:y1-zeroY}));
+      const defs=el('defs'); defs.append(positiveClip,negativeClip); plot.prepend(defs);
+      plot.querySelector('.positive-area').setAttribute('clip-path','url(#positive-plot-area)');
+      plot.querySelector('.negative-area').setAttribute('clip-path','url(#negative-plot-area)');
+
+      const zeroLabel=el('text',{x:5,y:zeroY+4,'font-size':12,fill:'#26334d'});
+      zeroLabel.textContent='0';
+      plot.append(el('line',{class:'zero-line',x1:x0,y1:zeroY,x2:x1,y2:zeroY}),zeroLabel,
+        el('line',{class:'axis',x1:x0,y1:y1,x2:x1,y2:y1}),el('line',{class:'axis',x1:x0,y1:y0,x2:x0,y2:y1}),
+        el('path',{class:'plot-line',d:curve}));
+    }
     function update(){drawCurve();const data=compute();drawPlot(data);totalEl.textContent=exactIntegral().toFixed(4);}
     document.querySelector('#reset').onclick=()=>{points=initial.map(p=>({...p}));update();}; fieldSelect.onchange=()=>{drawField();update();}; drawField();update();
   </script>
