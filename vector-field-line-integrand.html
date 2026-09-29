@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vector Field Line Integral</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; color: #172033; background: #f5f7fb; }
+    body { margin: 0; padding: 24px; }
+    h1 { margin: 0 0 6px; font-size: 1.45rem; }
+    p { margin: 0 0 16px; color: #536078; }
+    .layout { display: grid; grid-template-columns: minmax(520px, 1fr) 360px; gap: 18px; max-width: 1180px; margin: auto; }
+    .card { background: white; border: 1px solid #dce2ed; border-radius: 12px; padding: 16px; box-shadow: 0 3px 12px #16213d0c; }
+    svg { width: 100%; display: block; background: #fff; border-radius: 8px; }
+    #plane { aspect-ratio: 1.45; }
+    #integral { aspect-ratio: 1.45; margin-top: 12px; }
+    .controls { display: grid; gap: 12px; }
+    label { font-size: .9rem; color: #536078; }
+    select, button { font: inherit; padding: 8px 10px; border: 1px solid #cbd3e2; border-radius: 7px; background: #fff; }
+    button { cursor: pointer; background: #eef3ff; }
+    .formula { padding: 10px; background: #f3f6fc; border-radius: 8px; font-family: ui-monospace, monospace; font-size: .9rem; }
+    .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: .84rem; color: #536078; }
+    .swatch { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin-right: 4px; }
+    .hint { font-size: .85rem; line-height: 1.4; }
+    .vector { stroke: #9aa8c2; stroke-width: 1.25; stroke-linecap: round; marker-end: url(#arrow); }
+    .curve { fill: none; stroke: #d64545; stroke-width: 3; }
+    .handle-line { stroke: #e4a0a0; stroke-width: 1.5; stroke-dasharray: 5 4; }
+    .control { fill: #fff; stroke: #d64545; stroke-width: 3; cursor: grab; }
+    .endpoint { fill: #d64545; stroke: #fff; stroke-width: 2; }
+    .axis { stroke: #26334d; stroke-width: 1.2; }
+    .grid { stroke: #e7ebf3; stroke-width: 1; }
+    .plot-line { fill: none; stroke: #3867d6; stroke-width: 3; }
+    .value { font-weight: 650; color: #26334d; }
+    @media (max-width: 850px) { .layout { grid-template-columns: 1fr; } body { padding: 12px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Vector field and line integral</h1>
+    <p>Drag the four Bézier control points. The red curve and cumulative integral update immediately.</p>
+    <div class="layout">
+      <section class="card">
+        <svg id="plane" viewBox="0 0 760 520" aria-label="Vector field and draggable Bézier curve"></svg>
+        <div class="legend">
+          <span><i class="swatch" style="background:#9aa8c2"></i>vector field</span>
+          <span><i class="swatch" style="background:#d64545"></i>curve</span>
+          <span><i class="swatch" style="background:#3867d6"></i>integral graph</span>
+        </div>
+      </section>
+      <aside class="card controls">
+        <label>Vector field
+          <select id="field">
+            <option value="rotation">F(x,y) = (-y, x)</option>
+            <option value="constant">F(x,y) = (1, 0.5)</option>
+            <option value="radial">F(x,y) = (x, y)</option>
+            <option value="shear">F(x,y) = (y, x)</option>
+          </select>
+        </label>
+        <button id="reset">Reset curve</button>
+        <div class="formula">F · dr = F(r(t)) · r′(t) dt</div>
+        <div>Final line integral: <span class="value" id="total">0</span></div>
+        <p class="hint">The curve is a cubic Bézier curve with endpoints and two handles. The lower graph shows the instantaneous integrand F(r(t)) · r′(t).</p>
+        <svg id="integral" viewBox="0 0 760 360" aria-label="Line-integrand plot"></svg>
+      </aside>
+    </div>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <script>
+    const NS = 'http://www.w3.org/2000/svg';
+    const plane = document.querySelector('#plane'), plot = document.querySelector('#integral');
+    const totalEl = document.querySelector('#total'), fieldSelect = document.querySelector('#field');
+    const W = 760, H = 520, bounds = {x0: 30, x1: 730, y0: 30, y1: 490};
+    const initial = [{x:100,y:400},{x:250,y:100},{x:500,y:430},{x:660,y:120}];
+    let points = initial.map(p => ({...p})), dragIndex = -1;
+    const el = (name, attrs={}) => { const x = document.createElementNS(NS,name); for (const [k,v] of Object.entries(attrs)) x.setAttribute(k,v); return x; };
+    const group = el('g'); plane.append(group);
+    const defs = el('defs'), marker = el('marker',{id:'arrow',markerWidth:6,markerHeight:6,refX:5,refY:3,orient:'auto'});
+    marker.append(el('path',{d:'M0,0 L6,3 L0,6 z',fill:'#9aa8c2'})); defs.append(marker); plane.append(defs);
+    const curvePath = el('path',{class:'curve'}), handles = el('g'), controls = el('g'), endpoints = el('g');
+    plane.append(handles, curvePath, controls, endpoints);
+    function F(x,y) { switch(fieldSelect.value) { case 'constant': return [1,.5]; case 'radial': return [x/4,y/4]; case 'shear': return [y/4,x/4]; default: return [-y/4,x/4]; } }
+    function drawField() {
+      group.replaceChildren();
+      for (let x=70;x<=690;x+=55) for (let y=70;y<=470;y+=55) {
+        const xx=(x-W/2)/55, yy=(H/2-y)/55, [u,v]=F(xx,yy), len=Math.hypot(u,v)||1, scale=20/len;
+        group.append(el('line',{class:'vector',x1:x,y1:y,x2:x+u*scale,y2:y-v*scale}));
+      }
+    }
+    function bez(t) { const s=1-t; return {x:s*s*s*points[0].x+3*s*s*t*points[1].x+3*s*t*t*points[2].x+t*t*t*points[3].x, y:s*s*s*points[0].y+3*s*s*t*points[1].y+3*s*t*t*points[2].y+t*t*t*points[3].y}; }
+    function bezDeriv(t) { const s=1-t; return {x:3*s*s*(points[1].x-points[0].x)+6*s*t*(points[2].x-points[1].x)+3*t*t*(points[3].x-points[2].x), y:3*s*s*(points[1].y-points[0].y)+6*s*t*(points[2].y-points[1].y)+3*t*t*(points[3].y-points[2].y)}; }
+    function screenToField(p) { return [(p.x-W/2)/55,(H/2-p.y)/55]; }
+    function compute() { const out=[]; let sum=0, n=500; for(let i=0;i<=n;i++){const t=i/n,r=bez(t),d=bezDeriv(t),[fx,fy]=F(...screenToField(r)); const integrand=fx*d.x/55 + fy*(-d.y/55); if(i>0) sum += integrand/n; out.push({t,v:integrand, cumulative:sum});} return out; }
+    function drawCurve() { curvePath.setAttribute('d',`M ${points[0].x} ${points[0].y} C ${points[1].x} ${points[1].y}, ${points[2].x} ${points[2].y}, ${points[3].x} ${points[3].y}`); handles.replaceChildren(); controls.replaceChildren(); endpoints.replaceChildren(); handles.append(el('line',{class:'handle-line',x1:points[0].x,y1:points[0].y,x2:points[1].x,y2:points[1].y}),el('line',{class:'handle-line',x1:points[3].x,y1:points[3].y,x2:points[2].x,y2:points[2].y})); points.forEach((p,i)=>{const c=el('circle',{class:i===0||i===3?'endpoint':'control',cx:p.x,cy:p.y,r:i===0||i===3?7:9}); const selection=d3.select(c); selection.call(d3.drag().on('start',()=>{dragIndex=i;}).on('drag',(event)=>{const r=plane.getBoundingClientRect(); points[i]={x:event.sourceEvent.clientX-r.left,y:event.sourceEvent.clientY-r.top}; points[i].x*=W/r.width; points[i].y*=H/r.height; update();}).on('end',()=>{dragIndex=-1;})); (i===0||i===3?endpoints:controls).append(c);}); }
+    function drawPlot(data) { const x0=55,x1=735,y0=25,y1=315, vals=data.map(d=>d.v); let lo=Math.min(0,...vals), hi=Math.max(0,...vals), pad=(hi-lo||1)*.12; lo-=pad;hi+=pad; plot.replaceChildren(); for(let i=0;i<=5;i++){const y=y1-i*(y1-y0)/5, val=lo+i*(hi-lo)/5; const gridLine=el('line',{class:'grid',x1:x0,y1:y,x2:x1,y2:y}); const label=el('text',{x:5,y:y+4,'font-size':12,fill:'#536078'}); label.textContent=val.toFixed(2); plot.append(gridLine,label);} plot.append(el('line',{class:'axis',x1:x0,y1:y1,x2:x1,y2:y1}),el('line',{class:'axis',x1:x0,y1:y0,x2:x0,y2:y1})); const d=data.map((p,i)=>`${i?'L':'M'} ${x0+p.t*(x1-x0)} ${y1-(p.v-lo)/(hi-lo)*(y1-y0)}`).join(' ');plot.append(el('path',{class:'plot-line',d})); }
+    function update(){drawCurve();const data=compute();drawPlot(data);totalEl.textContent=data.at(-1).cumulative.toFixed(4);}
+    document.querySelector('#reset').onclick=()=>{points=initial.map(p=>({...p}));update();}; fieldSelect.onchange=()=>{drawField();update();}; drawField();update();
+  </script>
+</body>
+</html>
