@@ -89,10 +89,28 @@
     function bez(t) { const s=1-t; return {x:s*s*s*points[0].x+3*s*s*t*points[1].x+3*s*t*t*points[2].x+t*t*t*points[3].x, y:s*s*s*points[0].y+3*s*s*t*points[1].y+3*s*t*t*points[2].y+t*t*t*points[3].y}; }
     function bezDeriv(t) { const s=1-t; return {x:3*s*s*(points[1].x-points[0].x)+6*s*t*(points[2].x-points[1].x)+3*t*t*(points[3].x-points[2].x), y:3*s*s*(points[1].y-points[0].y)+6*s*t*(points[2].y-points[1].y)+3*t*t*(points[3].y-points[2].y)}; }
     function screenToField(p) { return [(p.x-W/2)/55,(H/2-p.y)/55]; }
+    function exactIntegral() {
+      const p = points.map(screenToField);
+      const [p0,p1,p2,p3] = p;
+      switch (fieldSelect.value) {
+        case 'constant':
+          return -p0[0] + p3[0] - 0.5*p0[1] + 0.5*p3[1];
+        case 'radial':
+          return -0.5*p0[0]**2 + 0.5*p3[0]**2 - 0.5*p0[1]**2 + 0.5*p3[1]**2;
+        case 'shear':
+          return -p0[0]*p0[1] + p3[0]*p3[1];
+        default:
+          return 0.1*(6*p1[1]+3*p2[1]+p3[1])*p0[0]
+            + 0.1*(-6*p1[0]-3*p2[0]-p3[0])*p0[1]
+            + 0.1*(3*p2[1]+3*p3[1])*p1[0]
+            + 0.1*(-3*p2[0]-3*p3[0])*p1[1]
+            + 0.6*p3[1]*p2[0] - 0.6*p2[1]*p3[0];
+      }
+    }
     function compute() { const out=[]; let sum=0, n=500; for(let i=0;i<=n;i++){const t=i/n,r=bez(t),d=bezDeriv(t),[fx,fy]=F(...screenToField(r)); const integrand=fx*d.x/55 + fy*(-d.y/55); if(i>0) sum += integrand/n; out.push({t,v:integrand, cumulative:sum});} return out; }
     function drawCurve() { curvePath.setAttribute('d',`M ${points[0].x} ${points[0].y} C ${points[1].x} ${points[1].y}, ${points[2].x} ${points[2].y}, ${points[3].x} ${points[3].y}`); handles.replaceChildren(); controls.replaceChildren(); endpoints.replaceChildren(); handles.append(el('line',{class:'handle-line',x1:points[0].x,y1:points[0].y,x2:points[1].x,y2:points[1].y}),el('line',{class:'handle-line',x1:points[3].x,y1:points[3].y,x2:points[2].x,y2:points[2].y})); points.forEach((p,i)=>{const c=el('circle',{class:i===0||i===3?'endpoint':'control',cx:p.x,cy:p.y,r:i===0||i===3?7:9}); const selection=d3.select(c); selection.call(d3.drag().on('start',()=>{dragIndex=i;}).on('drag',(event)=>{const r=plane.getBoundingClientRect(); points[i]={x:event.sourceEvent.clientX-r.left,y:event.sourceEvent.clientY-r.top}; points[i].x*=W/r.width; points[i].y*=H/r.height; update();}).on('end',()=>{dragIndex=-1;})); (i===0||i===3?endpoints:controls).append(c);}); }
     function drawPlot(data) { const x0=55,x1=735,y0=25,y1=315, vals=data.map(d=>d.v); let lo=Math.min(0,...vals), hi=Math.max(0,...vals), pad=(hi-lo||1)*.12; lo-=pad;hi+=pad; plot.replaceChildren(); for(let i=0;i<=5;i++){const y=y1-i*(y1-y0)/5, val=lo+i*(hi-lo)/5; const gridLine=el('line',{class:'grid',x1:x0,y1:y,x2:x1,y2:y}); const label=el('text',{x:5,y:y+4,'font-size':12,fill:'#536078'}); label.textContent=val.toFixed(2); plot.append(gridLine,label);} plot.append(el('line',{class:'axis',x1:x0,y1:y1,x2:x1,y2:y1}),el('line',{class:'axis',x1:x0,y1:y0,x2:x0,y2:y1})); const d=data.map((p,i)=>`${i?'L':'M'} ${x0+p.t*(x1-x0)} ${y1-(p.v-lo)/(hi-lo)*(y1-y0)}`).join(' ');plot.append(el('path',{class:'plot-line',d})); }
-    function update(){drawCurve();const data=compute();drawPlot(data);totalEl.textContent=data.at(-1).cumulative.toFixed(4);}
+    function update(){drawCurve();const data=compute();drawPlot(data);totalEl.textContent=exactIntegral().toFixed(4);}
     document.querySelector('#reset').onclick=()=>{points=initial.map(p=>({...p}));update();}; fieldSelect.onchange=()=>{drawField();update();}; drawField();update();
   </script>
 </body>
