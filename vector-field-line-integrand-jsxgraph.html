@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vector Field Line Integral — JSXGraph</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jsxgraph@1.8.0/distrib/jsxgraph.css">
+  <style>
+    :root { font-family: system-ui, sans-serif; color:#172033; background:#f5f7fb; }
+    body { margin:0; padding:24px; } h1 { margin:0 0 6px; font-size:1.45rem; }
+    p { margin:0 0 16px; color:#536078; }
+    .layout { display:grid; grid-template-columns:minmax(520px,1fr) 360px; gap:18px; max-width:1180px; margin:auto; }
+    .card { background:#fff; border:1px solid #dce2ed; border-radius:12px; padding:16px; box-shadow:0 3px 12px #16213d0c; }
+    .jxgbox { width:100%; height:520px; border:0; background:#fff; border-radius:8px; }
+    #integral { height:360px; margin-top:12px; }
+    .controls { display:grid; gap:12px; align-content:start; } label { font-size:.9rem; color:#536078; }
+    select,button { font:inherit; padding:8px 10px; border:1px solid #cbd3e2; border-radius:7px; background:#fff; }
+    button { cursor:pointer; background:#eef3ff; } .formula { padding:10px; background:#f3f6fc; border-radius:8px; font-family:ui-monospace,monospace; font-size:.9rem; }
+    .hint { font-size:.85rem; line-height:1.4; } .value { font-weight:650; color:#26334d; }
+    @media(max-width:850px){.layout{grid-template-columns:1fr}body{padding:12px}}
+  </style>
+</head>
+<body>
+<main><h1>Vector field and line integral (JSXGraph)</h1>
+  <p>Drag the four Bézier control points. The red curve and integrand update immediately.</p>
+  <div class="layout">
+    <section class="card"><div id="plane" class="jxgbox" aria-label="Vector field and draggable Bézier curve"></div></section>
+    <aside class="card controls">
+      <label>Vector field
+        <select id="field"><option value="rotation">F(x,y) = (-y, x)</option><option value="constant">F(x,y) = (1, 0.5)</option><option value="radial">F(x,y) = (x, y)</option><option value="shear">F(x,y) = (y, x)</option></select>
+      </label>
+      <button id="reset">Reset curve</button>
+      <div class="formula">F · dr = F(r(t)) · r′(t) dt</div>
+      <div>Final line integral: <span class="value" id="total">0</span></div>
+      <p class="hint">JSXGraph supplies the interactive board and draggable points. The curve is a cubic Bézier curve with endpoints and two handles.</p>
+      <div id="integral" class="jxgbox" aria-label="Line-integrand plot"></div>
+    </aside>
+  </div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/jsxgraph@1.8.0/distrib/jsxgraphcore.js"></script>
+<script>
+const $=id=>document.getElementById(id), initial=[[-6,-3],[-3,5],[3,-3],[6,4]];
+let points=initial.map(p=>p.slice()), field='rotation';
+const plane=JXG.JSXGraph.initBoard('plane',{boundingbox:[-7,7,7,-7],axis:true,grid:true,showCopyright:false,showNavigation:false});
+const plot=JXG.JSXGraph.initBoard('integral',{boundingbox:[-0.02,5,1.02,-5],axis:true,grid:true,showCopyright:false,showNavigation:false});
+function F(x,y){if(field==='constant')return[1,.5];if(field==='radial')return[x,y];if(field==='shear')return[y,x];return[-y,x];}
+function bez(t){let s=1-t,p=points;return [s*s*s*p[0][0]+3*s*s*t*p[1][0]+3*s*t*t*p[2][0]+t*t*t*p[3][0],s*s*s*p[0][1]+3*s*s*t*p[1][1]+3*s*t*t*p[2][1]+t*t*t*p[3][1]];}
+function der(t){let s=1-t,p=points;return [3*s*s*(p[1][0]-p[0][0])+6*s*t*(p[2][0]-p[1][0])+3*t*t*(p[3][0]-p[2][0]),3*s*s*(p[1][1]-p[0][1])+6*s*t*(p[2][1]-p[1][1])+3*t*t*(p[3][1]-p[2][1])];}
+function integral(){let p=points,[a,b,c,d]=p; if(field==='constant')return d[0]-a[0]+.5*(d[1]-a[1]); if(field==='radial')return .5*(d[0]*d[0]+d[1]*d[1]-a[0]*a[0]-a[1]*a[1]); if(field==='shear')return d[0]*d[1]-a[0]*a[1]; return .1*(6*b[1]+3*c[1]+d[1])*a[0]+.1*(-6*b[0]-3*c[0]-d[0])*a[1]+.1*(3*c[1]+3*d[1])*b[0]+.1*(-3*c[0]-3*d[0])*b[1]+.6*d[1]*c[0]-.6*c[1]*d[0];}
+function samples(){let out=[],sum=0,n=500;for(let i=0;i<=n;i++){let t=i/n,r=bez(t),q=der(t),v=F(r[0],r[1])[0]*q[0]+F(r[0],r[1])[1]*q[1];if(i)sum+=v/n;out.push([t,v,sum]);}return out;}
+let arrows=[],handles=[],curve,pts=[],graph;
+function drawField(){arrows.forEach(x=>plane.removeObject(x));arrows=[];for(let x=-6;x<=6;x+=1.5)for(let y=-6;y<=6;y+=1.5){let q=F(x,y),m=Math.hypot(...q)||1,s=.28/m;arrows.push(plane.create('arrow',[[x,y],[x+q[0]*s,y+q[1]*s]],{strokeColor:'#9aa8c2',strokeWidth:1}));}}
+function drawCurve(){
+  handles.forEach(x=>plane.removeObject(x)); handles=[];
+  pts.forEach(x=>plane.removeObject(x)); pts=[];
+  if(curve) plane.removeObject(curve);
+  curve=plane.create('curve',[t=>bez(t)[0],t=>bez(t)[1],0,1],{strokeColor:'#d64545',strokeWidth:3});
+  // Create the JSXGraph points before creating dynamic segments that reference them.
+  points.forEach((p,i)=>pts.push(plane.create('point',p,{name:'',size:i===0||i===3?4:5,strokeColor:'#d64545',fillColor:'#fff',fixed:false})));
+  handles.push(
+    plane.create('segment',[()=>pts[0],()=>pts[1]],{dash:2,strokeColor:'#e4a0a0'}),
+    plane.create('segment',[()=>pts[3],()=>pts[2]],{dash:2,strokeColor:'#e4a0a0'})
+  );
+  pts.forEach((p,i)=>p.on('drag',()=>{points[i]=[p.X(),p.Y()];update();}));
+}
+function drawPlot(){if(graph)plot.removeObject(graph);let d=samples();graph=plot.create('curve',[t=>{let i=Math.min(500,Math.round(t*500));return d[i][0]},t=>{let i=Math.min(500,Math.round(t*500));return d[i][1]} ,0,1],{strokeColor:'#3867d6',strokeWidth:3});}
+function update(){plane.update();drawPlot();plot.update();$('total').textContent=integral().toFixed(4);}
+function init(){drawField();drawCurve();update();}
+$('field').onchange=e=>{field=e.target.value;drawField();update();}; $('reset').onclick=()=>{points=initial.map(p=>p.slice());drawCurve();update();}; init();
+</script></body></html>

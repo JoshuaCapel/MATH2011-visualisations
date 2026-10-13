@@ -12,6 +12,8 @@ as a graph against the Bézier parameter \(t\).
 
 Open `vector-field-line-integrand.html` in a web browser. The app loads D3.js from jsDelivr, so an internet connection is required unless D3 is downloaded locally.
 
+The JSXGraph comparison version is `vector-field-line-integrand-jsxgraph.html`. It loads JSXGraph from jsDelivr and uses JSXGraph boards, points, arrows, and curves instead of D3/SVG DOM manipulation.
+
 ## Features
 
 - Interactive SVG vector-field diagram.
